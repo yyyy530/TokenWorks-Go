@@ -5,7 +5,6 @@ import 'package:test/test.dart';
 
 // The App gate has no Flutter dependency; this SDK harness exercises it with
 // package:test and real transport receipts without adding an App dependency.
-// ignore: avoid_relative_lib_imports
 import 'fixtures/companion/companion_signals.dart';
 import 'support/companion_signal_host.dart';
 

@@ -35,7 +35,6 @@ final class WorkspaceHomeState extends State<WorkspaceHome> {
   WorkspaceMode selectedMode = WorkspaceMode.standard;
   final composer = TextEditingController();
 
-  /// Test-visible selection state: the active WorkspaceMode after user taps.
   @visibleForTesting
   WorkspaceMode get activeMode => selectedMode;
 

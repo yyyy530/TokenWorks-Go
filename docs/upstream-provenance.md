@@ -27,10 +27,11 @@ TokenWorks-Go 复用了 [ccch1mneyyy/dsh-Go](https://github.com/ccch1mneyyy/dsh-
 | `packages/dsh_client/test/companion_prompt_commit_test.dart` | import 路径改为 `fixtures/companion/` | 测试引用的上游 App 门面按 fixture 方式随包提供，不引入 Flutter 上下文 |
 | `packages/dsh_client/test/companion_local_store_test.dart` | import 路径改为 `fixtures/companion/` | 同上 |
 | `packages/dsh_client/test/companion_signal_gate_test.dart` | import 路径改为 `fixtures/companion/` | 同上 |
+| `packages/dsh_client/test/dsh_go_heartbeat_test.dart` | Host 发送前检查 closeCode，并处理检查与写入之间的关闭竞态 | 避免 pong 在 peer 关闭后写入导致全套件偶发失败 |
 
 ## 合规要点
 
 - 以上包整体按 AGPL-3.0 分发；发布 TokenWorks-Go 时须提供对应源码。
-- `packages/tokenworks_core/` 与 `app/lib/`（companion 除外）为原创代码，不继承上游 AGPL。
+- `packages/tokenworks_core/` 与 `app/lib/` 为原创代码，不继承上游 AGPL。
 - DSH Go 名称、标识、Deepy、鲸娘及 `site/home/` 素材均未复制，不在授权范围内。
 - 关于页与 README 需保留上游署名（见 README「与上游的关系」）。

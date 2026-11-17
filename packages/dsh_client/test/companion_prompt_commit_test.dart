@@ -5,7 +5,6 @@ import 'package:test/test.dart';
 
 // The compiler has no Flutter dependency; exercise its output with the actual
 // SDK prompt RPC and session/follow decoder on a controlled loopback Host.
-// ignore: avoid_relative_lib_imports
 import 'fixtures/companion/companion_context.dart';
 import 'support/fake_dsh.dart';
 

@@ -2,8 +2,7 @@ import 'models.dart';
 import 'ports.dart';
 import 'validation.dart';
 
-/// A direct, fully-supported adapter to a TokenWorks-compatible host.
-/// In real deployments this wraps the DSH client bridge on that host.
+/// Placeholder host adapter whose operations are not implemented yet.
 final class TokenWorksHostAdapter implements WorkspaceGateway, TokenWorksDirectory {
   const TokenWorksHostAdapter();
 
@@ -51,7 +50,7 @@ final class TokenWorksHostAdapter implements WorkspaceGateway, TokenWorksDirecto
   }
 }
 
-/// Wraps a workspace adapter with TokenWorks policy validation.
+/// Applies launch policy before delegating session creation.
 final class PolicyEnforcingWorkspaceAdapter implements WorkspaceGateway {
   const PolicyEnforcingWorkspaceAdapter(this.inner, this.account, this.policy);
 

@@ -33,7 +33,6 @@ void main() {
     await tester.pump();
     expect(state.activeMode, WorkspaceMode.study);
 
-    // Composer content survives mode switches (no state reset).
     await tester.enterText(find.byType(TextField), '帮我整理文献');
     await tester.tap(find.text('标准'));
     await tester.pump();

@@ -5,7 +5,6 @@ import 'package:dsh_client/companion.dart';
 import 'package:test/test.dart';
 
 // Verify the actual app facade in this pure Dart suite without Flutter.
-// ignore: avoid_relative_lib_imports
 import 'fixtures/companion/companion_local.dart';
 
 typedef Json = Map<String, Object?>;

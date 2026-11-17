@@ -299,7 +299,14 @@ class _HostConnection {
   final WebSocket socket;
   final messages = _Inbox<Map<String, Object?>>();
   final closed = Completer<int?>();
-  void send(Map<String, Object?> message) => socket.add(jsonEncode(message));
+  void send(Map<String, Object?> message) {
+    if (socket.closeCode != null) return;
+    try {
+      socket.add(jsonEncode(message));
+    } on StateError {
+      // The peer can close between the close-code check and this write.
+    }
+  }
 }
 
 class _Inbox<T> {
