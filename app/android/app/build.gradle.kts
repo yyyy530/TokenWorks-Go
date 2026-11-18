@@ -4,6 +4,9 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val localRuntime = layout.projectDirectory.dir("../runtime-bundle")
+val hasLocalRuntime = localRuntime.file("assets/tokenworks/runtime/manifest.json").asFile.isFile
+
 android {
     namespace = "io.github.yyyy530.tokenworks_go"
     compileSdk = flutter.compileSdkVersion
@@ -27,6 +30,25 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
+
+    if (hasLocalRuntime) {
+        sourceSets.named("main") {
+            assets.srcDir(localRuntime.dir("assets"))
+            jniLibs.srcDir(localRuntime.dir("jniLibs"))
+        }
+        packaging.jniLibs {
+            useLegacyPackaging = true
+            keepDebugSymbols += setOf(
+                "**/libproot.so", "**/libproot-loader.so", "**/libtalloc.so", "**/libandroid-shmem.so",
+            )
+        }
+        androidResources.noCompress += "xz"
+    }
+}
+
+dependencies {
+    implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.tukaani:xz:1.10")
 }
 
 kotlin {

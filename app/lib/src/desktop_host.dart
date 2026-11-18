@@ -81,8 +81,35 @@ Future<DesktopConnection> connectDesktop(
   String? launchToken,
   DshCookie? cookie,
 }) async {
-  final connection = DshConnection(
+  return _connectDsh(
     desktopEndpoint(endpoint.toString()),
+    launchToken: launchToken,
+    cookie: cookie,
+  );
+}
+
+Future<DesktopConnection> connectLocal(Uri endpoint, String token) async {
+  if (endpoint.scheme != 'http' ||
+      endpoint.host != '127.0.0.1' ||
+      !endpoint.hasPort ||
+      endpoint.port < 1024 ||
+      endpoint.userInfo.isNotEmpty ||
+      endpoint.hasQuery ||
+      endpoint.hasFragment ||
+      endpoint.path.isNotEmpty ||
+      !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(token)) {
+    throw const FormatException('Invalid local runtime connection');
+  }
+  return _connectDsh(endpoint, launchToken: token);
+}
+
+Future<DesktopConnection> _connectDsh(
+  Uri endpoint, {
+  String? launchToken,
+  DshCookie? cookie,
+}) async {
+  final connection = DshConnection(
+    endpoint,
     requestTimeout: const Duration(seconds: 20),
   );
   final client = DshClient(connection);
@@ -130,7 +157,17 @@ Future<List<WorkspaceMode>> availableTokenWorksModes(DshClient client) async {
   }
 }
 
+final class HostConnectionException implements Exception {
+  const HostConnectionException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 String desktopError(Object error) => switch (error) {
+  HostConnectionException(message: final message) => message,
   DshHttpException(statusCode: 401) => '主机登录已失效，请使用新的启动令牌连接。',
   DshHttpException(statusCode: 403) => '主机拒绝了连接，请检查主机名和反向代理配置。',
   DshRemoteException(code: 'session/writer-held') => '会话正在由另一进程写入。',

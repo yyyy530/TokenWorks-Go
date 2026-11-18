@@ -7,15 +7,24 @@ import 'package:tokenworks_core/tokenworks_core.dart' show WorkspaceMode;
 import 'campus_client.dart';
 import 'campus_page.dart';
 import 'desktop_host.dart';
+import 'host_manager.dart';
+import 'host_registry.dart';
+import 'host_vault.dart';
+import 'hosts_page.dart';
+import 'local_runtime.dart';
+import 'local_runtime_page.dart';
+import 'plugins_page.dart';
+import 'remote_host.dart';
+import 'schedules_page.dart';
 import 'session_page.dart';
 import 'ustc_quota.dart';
 import 'ustc_quota_page.dart';
 
 final class DesktopHome extends StatefulWidget {
-  const DesktopHome({required this.store, required this.connect, super.key});
+  const DesktopHome({required this.manager, this.remoteAccess, super.key});
 
-  final DesktopStore store;
-  final DesktopConnector connect;
+  final HostManager manager;
+  final RemoteHostAccess? remoteAccess;
 
   @override
   State<DesktopHome> createState() => _DesktopHomeState();
@@ -24,188 +33,57 @@ final class DesktopHome extends StatefulWidget {
 final class _DesktopHomeState extends State<DesktopHome> {
   final _address = TextEditingController();
   final _token = TextEditingController();
-  DshClient? _client;
-  DesktopCredentials? _saved;
-  Uri? _endpoint;
-  List<SessionSummary> _sessions = const [];
-  StreamSubscription<DshConnectionState>? _statusSubscription;
-  DshConnectionState _status = DshConnectionState.idle;
-  String? _error;
-  bool _busy = true;
   bool _remember = true;
+
+  HostManager get _manager => widget.manager;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_restore());
+    _manager.addListener(_onManagerChanged);
+    if (!_manager.loaded) unawaited(_manager.load());
+  }
+
+  void _onManagerChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _manager.removeListener(_onManagerChanged);
     _address.dispose();
     _token.dispose();
-    unawaited(_statusSubscription?.cancel());
-    unawaited(_client?.close());
     super.dispose();
   }
 
-  Future<void> _restore() async {
-    try {
-      final saved = await widget.store.read();
-      if (!mounted) return;
-      _saved = saved;
-      if (saved != null) {
-        _address.text = saved.endpoint.toString();
-        await _connect(saved.endpoint, cookie: saved.cookie);
-      }
-    } on Exception {
-      if (mounted) {
-        _error = '无法读取已保存的登录信息。';
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   Future<void> _submit() async {
-    if (_busy) return;
     final Uri endpoint;
     try {
       endpoint = desktopEndpoint(_address.text);
     } on FormatException {
-      setState(() => _error = '请输入有效的 HTTPS 主机地址，地址中不要包含令牌。');
+      setState(() => _manager.error = '请输入有效的 HTTPS 主机地址，地址中不要包含令牌。');
       return;
     }
     final token = _token.text.trim();
-    final saved = _saved;
-    if (token.isEmpty && saved?.endpoint != endpoint) {
-      setState(() => _error = '请输入桌面启动链接中的令牌。');
-      return;
-    }
-    await _connect(
+    await _manager.connectHttps(
       endpoint,
       launchToken: token.isEmpty ? null : token,
-      cookie: token.isEmpty ? saved?.cookie : null,
+      remember: _remember,
     );
-  }
-
-  Future<void> _connect(
-    Uri endpoint, {
-    String? launchToken,
-    DshCookie? cookie,
-  }) async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final connection = await widget.connect(
-        endpoint,
-        launchToken: launchToken,
-        cookie: cookie,
-      );
-      if (!mounted) {
-        await connection.client.close();
-        return;
-      }
-      _token.clear();
-      final client = connection.client;
-      _statusSubscription = client.mux.states.listen((state) {
-        if (mounted && identical(_client, client)) {
-          setState(() => _status = state);
-        }
-      });
-      setState(() {
-        _client = client;
-        _endpoint = endpoint;
-        _sessions = _visibleSessions(connection.sessions);
-        _status = client.mux.state;
-      });
-      if (launchToken != null) {
-        try {
-          if (_remember) {
-            final credentials = DesktopCredentials(endpoint, connection.cookie);
-            await widget.store.save(credentials);
-            _saved = credentials;
-          } else {
-            await widget.store.clear();
-            _saved = null;
-          }
-        } on Exception {
-          if (mounted) setState(() => _error = '已连接，手机上的登录存储未能更新。');
-        }
-      }
-    } on Exception catch (error) {
-      if (mounted) setState(() => _error = desktopError(error));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _disconnect() async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await widget.store.clear();
-      _saved = null;
-      unawaited(_statusSubscription?.cancel());
-      _statusSubscription = null;
-      await _client?.close();
-      if (!mounted) return;
-      setState(() {
-        _client = null;
-        _endpoint = null;
-        _status = DshConnectionState.idle;
-        _sessions = const [];
-      });
-    } on Exception {
-      if (mounted) setState(() => _error = '未能清除手机上的登录信息，请重试。');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  List<SessionSummary> _visibleSessions(List<SessionSummary> sessions) => [
-    for (final session in sessions)
-      if (!session.isSubagent && session.sessionId.isNotEmpty) session,
-  ];
-
-  Future<void> _refresh() async {
-    final client = _client;
-    if (_busy || client == null) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final sessions = await client.listSessions();
-      if (mounted) setState(() => _sessions = _visibleSessions(sessions));
-    } on Exception catch (error) {
-      if (mounted) setState(() => _error = desktopError(error));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    if (mounted && _manager.isConnected) _token.clear();
   }
 
   Future<void> _openSession(DshClient client, String id, String title) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) =>
-            SessionPage(client: client, sessionId: id, title: title),
+        builder: (_) => SessionPage(client: client, sessionId: id, title: title),
       ),
     );
-    if (mounted) await _refresh();
+    if (mounted) await _manager.refresh();
   }
 
   Future<void> _newSession() async {
-    final client = _client!;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+    final client = _manager.client!;
     SessionCreated? created;
     String? readyId;
     var sessionTitle = '新会话';
@@ -220,38 +98,30 @@ final class _DesktopHomeState extends State<DesktopHome> {
               (model.provider, model.id): model,
       }.values.toList();
       if (models.isEmpty) {
-        setState(() => _error = '主机没有可用模型，请先在桌面端配置。');
+        setState(() => _manager.error = _manager.isLocal
+            ? '本机没有可用模型，请打开「配置本机模型」添加模型提供商。'
+            : '主机没有可用模型，请先在桌面端配置。');
         return;
       }
 
       final modes = await availableModes;
       if (!mounted) return;
-      setState(() => _busy = false);
-      final selection =
-          await showDialog<
-            ({ModelInfo model, String? cwd, WorkspaceMode? mode})
-          >(
-            context: context,
-            builder: (_) => _NewSessionDialog(models: models, modes: modes),
-          );
+      final selection = await showDialog<({ModelInfo model, String? cwd, WorkspaceMode? mode})>(
+        context: context,
+        builder: (_) => _NewSessionDialog(models: models, modes: modes),
+      );
       if (selection == null || !mounted) return;
 
-      setState(() => _busy = true);
       final mode = selection.mode;
-      created = await client.createSession(
-        cwd: selection.cwd,
-        agentPreset: mode?.id,
-      );
+      created = await client.createSession(cwd: selection.cwd, agentPreset: mode?.id);
       if (created.sessionId.isEmpty) {
         throw const DshProtocolException('Missing created session ID');
       }
       if (mode != null) {
-        final applied =
-            created.agentPreset ??
-            (await client.projections(created.sessionId))?.agentPreset;
+        final applied = created.agentPreset ?? (await client.projections(created.sessionId))?.agentPreset;
         if (!mounted) return;
         if (applied != mode.id) {
-          setState(() => _error = '已创建空会话，但主机没有确认所选模式。');
+          setState(() => _manager.error = '已创建空会话，但主机没有确认所选模式。');
           return;
         }
         sessionTitle = '${mode.label}会话';
@@ -268,26 +138,50 @@ final class _DesktopHomeState extends State<DesktopHome> {
       readyId = created.sessionId;
     } on Exception catch (error) {
       if (mounted) {
-        setState(() {
-          _error = created != null && created.sessionId.isNotEmpty
-              ? '已创建空会话，但未能确认模式或模型。请在桌面端检查。'
-              : desktopError(error);
-        });
+        setState(() => _manager.error = created != null && created.sessionId.isNotEmpty
+            ? '已创建空会话，但未能确认模式或模型。请在桌面端检查。'
+            : desktopError(error));
       }
-    } finally {
-      if (mounted) setState(() => _busy = false);
     }
     if (mounted && readyId != null) {
       await _openSession(client, readyId, sessionTitle);
     }
   }
 
+  void _openHosts() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => HostsPage(manager: _manager, remoteAccess: widget.remoteAccess)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final manager = _manager;
+    final client = manager.client;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TokenWorks-Go'),
+        title: Text(manager.isLocal ? '本机工作区' : 'TokenWorks-Go'),
         actions: [
+          if (!manager.isLocal) ...[
+            IconButton(
+              onPressed: _openHosts,
+              tooltip: '主机管理',
+              icon: const Icon(Icons.dns_outlined),
+            ),
+            IconButton(
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => LocalRuntimePage(
+                    workspace: (access) => DesktopHome(
+                      manager: HostManager(vault: MemoryHostVault(), localAccess: access),
+                    ),
+                  ),
+                ),
+              ),
+              tooltip: '本机运行',
+              icon: const Icon(Icons.phone_android),
+            ),
+          ],
           IconButton(
             onPressed: () {
               final origin = configuredCampusOrigin();
@@ -307,7 +201,7 @@ final class _DesktopHomeState extends State<DesktopHome> {
               context: context,
               applicationName: 'TokenWorks-Go',
               applicationVersion: '0.1.0',
-              children: const [Text('桌面连接复用 ccch1mneyyy/dsh-Go 的 DSH 客户端。')],
+              children: const [Text('客户端与 Linux 运行时基于 ccch1mneyyy/dsh-Go。')],
             ),
             tooltip: '关于',
             icon: const Icon(Icons.info_outline),
@@ -321,56 +215,48 @@ final class _DesktopHomeState extends State<DesktopHome> {
             child: CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(
-                  child: _busy
-                      ? const LinearProgressIndicator()
-                      : const SizedBox.shrink(),
+                  child: manager.busy ? const LinearProgressIndicator() : const SizedBox.shrink(),
                 ),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                   sliver: SliverList.list(
                     children: [
-                      if (_error case final error?)
+                      if (manager.error case final error?)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 16),
                           child: Text(
                             error,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
+                            style: TextStyle(color: Theme.of(context).colorScheme.error),
                           ),
                         ),
-                      if (_client == null) ..._connectionForm(),
-                      if (_client != null) ..._connectedHeader(),
+                      if (client == null && manager.isLocal)
+                        OutlinedButton(
+                          onPressed: manager.busy
+                              ? null
+                              : () => _manager.connectLocalEngine(_manager.localAccess!),
+                          child: const Text('重连本机引擎'),
+                        ),
+                      if (client == null && !manager.isLocal) ..._disconnectedBody(),
+                      if (client != null) ..._connectedHeader(),
                     ],
                   ),
                 ),
-                if (_client != null)
+                if (client != null)
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
                     sliver: SliverList.builder(
-                      itemCount: _sessions.length,
+                      itemCount: manager.sessions.length,
                       itemBuilder: (context, index) {
-                        final client = _client!;
-                        final session = _sessions[index];
+                        final session = manager.sessions[index];
                         final title = session.title ?? '无标题会话';
                         return ListTile(
-                          leading: Icon(
-                            session.running
-                                ? Icons.sync
-                                : Icons.chat_bubble_outline,
-                          ),
+                          leading: Icon(session.running ? Icons.sync : Icons.chat_bubble_outline),
                           title: Text(title),
-                          subtitle: session.cwd == null
-                              ? null
-                              : Text(session.cwd!, maxLines: 1),
+                          subtitle: session.cwd == null ? null : Text(session.cwd!, maxLines: 1),
                           trailing: const Icon(Icons.chevron_right),
-                          onTap: _busy
+                          onTap: manager.busy
                               ? null
-                              : () => _openSession(
-                                  client,
-                                  session.sessionId,
-                                  title,
-                                ),
+                              : () => _openSession(client, session.sessionId, title),
                         );
                       },
                     ),
@@ -383,6 +269,62 @@ final class _DesktopHomeState extends State<DesktopHome> {
     );
   }
 
+  List<Widget> _disconnectedBody() {
+    final manager = _manager;
+    if (manager.registry.hosts.isEmpty) return _connectionForm();
+    return [
+      Text('选择主机', style: Theme.of(context).textTheme.headlineSmall),
+      const SizedBox(height: 8),
+      const Text('点一台主机连接，或在主机管理里添加 SSH 主机与 DSH Remote。'),
+      const SizedBox(height: 12),
+      for (final host in manager.registry.hosts)
+        Card(
+          child: ListTile(
+            leading: Icon(switch (host.transport) {
+              HostTransport.https => Icons.cloud_outlined,
+              HostTransport.ssh => Icons.terminal,
+              HostTransport.remote => Icons.devices_other,
+            }),
+            title: Text(host.name),
+            subtitle: Text(switch (host.transport) {
+              HostTransport.https => host.endpoint?.authority ?? '',
+              HostTransport.ssh => '${host.ssh?.username}@${host.ssh?.host}:${host.ssh?.port}',
+              HostTransport.remote => 'DSH Remote',
+            }),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: manager.busy ? null : () => _manager.connectHost(host, trust: _trustPrompt),
+          ),
+        ),
+      const SizedBox(height: 12),
+      OutlinedButton.icon(
+        onPressed: manager.busy ? null : _openHosts,
+        icon: const Icon(Icons.add),
+        label: const Text('添加或管理主机'),
+      ),
+    ];
+  }
+
+  Future<bool> _trustPrompt(String fingerprint) async {
+    final trusted = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('信任这台主机？'),
+        content: Text('首次连接这台主机。请在那台主机上核对密钥指纹，一致再信任。\n\nSHA-256：$fingerprint'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('信任并连接'),
+          ),
+        ],
+      ),
+    );
+    return trusted ?? false;
+  }
+
   List<Widget> _connectionForm() => [
     Text('连接桌面主机', style: Theme.of(context).textTheme.headlineSmall),
     const SizedBox(height: 8),
@@ -390,7 +332,7 @@ final class _DesktopHomeState extends State<DesktopHome> {
     const SizedBox(height: 20),
     TextField(
       controller: _address,
-      enabled: !_busy,
+      enabled: !_manager.busy,
       keyboardType: TextInputType.url,
       autocorrect: false,
       decoration: const InputDecoration(
@@ -402,14 +344,14 @@ final class _DesktopHomeState extends State<DesktopHome> {
     const SizedBox(height: 12),
     TextField(
       controller: _token,
-      enabled: !_busy,
+      enabled: !_manager.busy,
       obscureText: true,
       autocorrect: false,
       enableSuggestions: false,
-      decoration: InputDecoration(
+      decoration: const InputDecoration(
         labelText: '启动令牌',
-        hintText: _saved == null ? '从桌面启动链接中获取' : '留空使用已保存的登录',
-        border: const OutlineInputBorder(),
+        hintText: '从桌面启动链接中获取',
+        border: OutlineInputBorder(),
       ),
       onSubmitted: (_) => unawaited(_submit()),
     ),
@@ -417,18 +359,19 @@ final class _DesktopHomeState extends State<DesktopHome> {
       contentPadding: EdgeInsets.zero,
       title: const Text('在此手机上记住登录'),
       value: _remember,
-      onChanged: _busy ? null : (value) => setState(() => _remember = value),
+      onChanged: _manager.busy ? null : (value) => setState(() => _remember = value),
     ),
-    FilledButton(onPressed: _busy ? null : _submit, child: const Text('连接')),
-    if (_saved != null)
-      TextButton(
-        onPressed: _busy ? null : _disconnect,
-        child: const Text('清除已保存的登录'),
-      ),
+    FilledButton(onPressed: _manager.busy ? null : _submit, child: const Text('连接')),
+    const SizedBox(height: 12),
+    OutlinedButton.icon(
+      onPressed: _manager.busy ? null : _openHosts,
+      icon: const Icon(Icons.add),
+      label: const Text('添加 SSH 主机或 DSH Remote'),
+    ),
   ];
 
   void _openQuota() {
-    final client = _client;
+    final client = _manager.client;
     if (client == null) return;
     Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -437,49 +380,85 @@ final class _DesktopHomeState extends State<DesktopHome> {
     );
   }
 
-  List<Widget> _connectedHeader() => [
-    Text(
-      _endpoint!.authority,
-      style: Theme.of(context).textTheme.headlineSmall,
-    ),
-    Text(switch (_status) {
-      DshConnectionState.connected => 'DSH 已连接',
-      DshConnectionState.unauthorized => '登录失效，请断开后重新连接。',
-      DshConnectionState.closed => '连接已关闭',
-      _ => '正在连接主机…',
-    }),
-    const SizedBox(height: 12),
-    Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        FilledButton.icon(
-          onPressed: _busy || _status != DshConnectionState.connected
-              ? null
-              : _newSession,
-          icon: const Icon(Icons.add),
-          label: const Text('新建会话'),
-        ),
-        OutlinedButton(
-          onPressed: _busy ? null : _refresh,
-          child: const Text('刷新'),
-        ),
-        OutlinedButton(
-          onPressed: _busy || _status != DshConnectionState.connected
-              ? null
-              : _openQuota,
-          child: const Text('学校额度'),
-        ),
-        TextButton(
-          onPressed: _busy ? null : _disconnect,
-          child: const Text('断开并清除登录'),
-        ),
-      ],
-    ),
-    const SizedBox(height: 24),
-    Text('桌面会话', style: Theme.of(context).textTheme.titleLarge),
-    if (_sessions.isEmpty) const Text('这台主机暂无会话。'),
-  ];
+  void _openSchedules() {
+    final client = _manager.client;
+    if (client == null) return;
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => SchedulesPage(client: client)),
+    );
+  }
+
+  void _openPlugins() {
+    final client = _manager.client;
+    if (client == null) return;
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => PluginsPage(client: client)),
+    );
+  }
+
+  Future<void> _openLocalSettings() async {
+    final access = _manager.localAccess;
+    final cookie = _manager.client?.connection.cookie;
+    if (access == null || cookie == null) return;
+    try {
+      await const LocalRuntimeChannel().openWeb(access.endpoint, cookie);
+    } on Exception {
+      if (mounted) setState(() => _manager.error = '本机引擎设置暂时无法打开。');
+    }
+  }
+
+  List<Widget> _connectedHeader() {
+    final manager = _manager;
+    final title = manager.isLocal ? '本机 DSH' : manager.activeHost?.name ?? '主机';
+    return [
+      Text(title, style: Theme.of(context).textTheme.headlineSmall),
+      Text(switch (manager.status) {
+        DshConnectionState.connected => 'DSH 已连接',
+        DshConnectionState.unauthorized => '登录失效，请断开后重新连接。',
+        DshConnectionState.closed => '连接已关闭',
+        _ => '正在连接主机…',
+      }),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.icon(
+            onPressed: manager.busy || manager.status != DshConnectionState.connected ? null : _newSession,
+            icon: const Icon(Icons.add),
+            label: const Text('新建会话'),
+          ),
+          OutlinedButton(onPressed: manager.busy ? null : _manager.refresh, child: const Text('刷新')),
+          OutlinedButton(
+            onPressed: manager.busy || manager.status != DshConnectionState.connected ? null : _openSchedules,
+            child: const Text('自动化任务'),
+          ),
+          OutlinedButton(
+            onPressed: manager.busy || manager.status != DshConnectionState.connected ? null : _openPlugins,
+            child: const Text('插件'),
+          ),
+          if (!manager.isLocal) ...[
+            OutlinedButton(
+              onPressed: manager.busy || manager.status != DshConnectionState.connected ? null : _openQuota,
+              child: const Text('学校额度'),
+            ),
+            OutlinedButton(onPressed: manager.busy ? null : _openHosts, child: const Text('切换主机')),
+            TextButton(
+              onPressed: manager.busy ? null : () => _manager.disconnect(clearLogin: true),
+              child: const Text('断开并清除登录'),
+            ),
+          ] else
+            OutlinedButton(
+              onPressed: manager.busy || manager.status != DshConnectionState.connected ? null : _openLocalSettings,
+              child: const Text('配置本机模型'),
+            ),
+        ],
+      ),
+      const SizedBox(height: 24),
+      Text(manager.isLocal ? '本机会话' : '桌面会话', style: Theme.of(context).textTheme.titleLarge),
+      if (manager.sessions.isEmpty) const Text('这台主机暂无会话。'),
+    ];
+  }
 }
 
 final class _NewSessionDialog extends StatefulWidget {
@@ -520,10 +499,7 @@ final class _NewSessionDialogState extends State<_NewSessionDialog> {
               for (final model in widget.models)
                 DropdownMenuItem(
                   value: model,
-                  child: Text(
-                    '${model.name}（${model.provider}）',
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: Text('${model.name}（${model.provider}）', overflow: TextOverflow.ellipsis),
                 ),
             ],
             onChanged: (model) => setState(() => _model = model),
@@ -557,20 +533,13 @@ final class _NewSessionDialogState extends State<_NewSessionDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
         FilledButton(
           onPressed: _model == null
               ? null
               : () {
                   final cwd = _cwd.text.trim();
-                  Navigator.of(context).pop((
-                    model: _model!,
-                    cwd: cwd.isEmpty ? null : cwd,
-                    mode: _mode,
-                  ));
+                  Navigator.of(context).pop((model: _model!, cwd: cwd.isEmpty ? null : cwd, mode: _mode));
                 },
           child: const Text('创建'),
         ),

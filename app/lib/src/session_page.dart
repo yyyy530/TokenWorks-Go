@@ -7,6 +7,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'desktop_host.dart';
+import 'schedules_page.dart';
+import 'voice_call_page.dart';
 import 'workspace_page.dart';
 
 final class SessionPage extends StatefulWidget {
@@ -311,6 +313,28 @@ final class _SessionPageState extends State<SessionPage> {
       appBar: AppBar(
         title: Text(transcript.title ?? widget.title),
         actions: [
+          IconButton(
+            onPressed: _ready
+                ? () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => VoiceCallPage(client: _client, sessionId: _sessionId, title: transcript.title ?? widget.title),
+                    ),
+                  )
+                : null,
+            icon: const Icon(Icons.call_outlined),
+            tooltip: '语音通话',
+          ),
+          IconButton(
+            onPressed: _ready && _client.supportsEndpoint('schedule/catalog')
+                ? () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => SchedulesPage(client: _client, sessionId: _sessionId),
+                    ),
+                  )
+                : null,
+            icon: const Icon(Icons.schedule_outlined),
+            tooltip: '自动化任务',
+          ),
           IconButton(
             onPressed: _ready && _client.supportsEndpoint('workspaceFiles/list')
                 ? () => Navigator.of(context).push<void>(

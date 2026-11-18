@@ -29,6 +29,21 @@ CI 固定使用 Flutter 3.47.7。根目录的 Pub workspace 包含 `app` 与 `to
 
 Android 本机引擎、SSH 托管、DSH Remote 配对与学校账号均有独立验收要求，见[路线图](roadmap.md)。
 
+## 2026-11-19 本地验证
+
+本轮实际执行 `flutter analyze`、`flutter test`（App），`dart analyze`、`dart test`（三个 Dart 包），`node --test services/campus/server.test.mjs`，以及 `flutter build apk --debug --no-pub --target-platform android-arm64,android-x64`。
+
+| 套件 | Windows 11 结果 |
+|---|---|
+| `tokenworks_core` | 静态分析通过，18 项测试通过 |
+| `dsh_client` | 静态分析通过，908 项通过，32 项跳过 |
+| `dsh_remote` | 静态分析通过，499 项通过，4 项跳过 |
+| `app` | 静态分析通过，28 项测试通过；覆盖多主机与旧凭据迁移、SSH 配置和启动链接解析、Remote 存储、自动化任务、插件安装、语音识别/朗读与手动审批 |
+| 校园接入服务 | 4 项测试通过 |
+| Android | 双架构 debug APK 构建成功，apksigner v2 校验通过，1 个签名者 |
+
+App 静态分析在 ASCII 临时副本执行（中文路径触发既有 LSP 崩溃），测试在原仓库运行。验证 APK 位于该副本的 `app/build/app/outputs/flutter-apk/app-debug.apk`。**该副本未能读取 `app/android/runtime-bundle/`，因此这次 APK 不包含本机 Linux 运行时，只用于验证新增功能的编译和签名，不作为完整内置 Linux 包交付。** ADB 未检测到 Android 设备；SSH 真实主机、Remote 真实账号、插件真实安装、自动化任务真实执行、麦克风/系统 TTS 和 Android Keystore 均未做真机验收。
+
 ## 2026-11-18 本地验证
 
 | 套件 | Windows 11 结果 |

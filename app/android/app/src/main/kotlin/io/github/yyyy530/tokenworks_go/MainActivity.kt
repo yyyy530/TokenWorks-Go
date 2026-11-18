@@ -22,6 +22,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class MainActivity : FlutterActivity() {
+    private var voiceChannel: VoiceChannel? = null
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -30,9 +32,46 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+        voiceChannel = VoiceChannel(this, messenger)
+        val runtime = localRuntime ?: LocalRuntime(applicationContext).also { localRuntime = it }
+        MethodChannel(messenger, "tokenworks_go/local_runtime").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "status" -> result.success(runtime.status())
+                "start" -> {
+                    runtime.start()
+                    result.success(null)
+                }
+                "stop" -> {
+                    runtime.stop()
+                    result.success(null)
+                }
+                "connect" -> {
+                    val access = runtime.connection()
+                    result.success(access?.let { mapOf("endpoint" to it.origin, "token" to it.token) })
+                }
+                "openWeb" -> {
+                    val access = runtime.connection()
+                    val endpoint = call.argument<String>("endpoint")
+                    val cookie = call.argument<String>("cookie")
+                    if (access == null || endpoint != access.origin || cookie == null ||
+                        !dshCookie.matches(cookie)
+                    ) {
+                        result.error("not-connected", "The local engine session is unavailable", null)
+                    } else {
+                        startActivity(Intent(this, LocalDshActivity::class.java).apply {
+                            putExtra("origin", access.origin)
+                            putExtra("cookie", cookie)
+                        })
+                        result.success(null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         val storageQueue = messenger.makeBackgroundTaskQueue()
         registerStore(messenger, storageQueue, "desktop_store", "desktop-session")
         registerStore(messenger, storageQueue, "campus_store", "campus-session")
+        registerVault(messenger, storageQueue)
         MethodChannel(messenger, "tokenworks_go/campus_navigation").setMethodCallHandler { call, result ->
             try {
                 val intent = when (call.method) {
@@ -75,6 +114,25 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7319) {
+            voiceChannel?.onPermissionResult(
+                grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+            )
+        }
+    }
+
+    override fun onDestroy() {
+        voiceChannel?.shutdown()
+        voiceChannel = null
+        super.onDestroy()
+    }
+
     private fun trustedIwanIntent(): Intent? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
         val certificate = iwanReleaseCertificate.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
@@ -84,6 +142,37 @@ class MainActivity : FlutterActivity() {
             return null
         }
         return packageManager.getLaunchIntentForPackage(iwanPackage)
+    }
+
+    private fun registerVault(messenger: BinaryMessenger, queue: BinaryMessenger.TaskQueue) {
+        val directory = File(noBackupFilesDir, "host-vault").apply { mkdirs() }
+        MethodChannel(messenger, "tokenworks_go/host_vault", StandardMethodCodec.INSTANCE, queue)
+            .setMethodCallHandler { call, result ->
+                try {
+                    val key = when (call.method) {
+                        "write" -> requireNotNull(call.argument<String>("key"))
+                        else -> call.arguments as? String
+                    }
+                    requireNotNull(key)
+                    require(vaultKey.matches(key))
+                    val file = AtomicFile(File(directory, key))
+                    when (call.method) {
+                        "read" -> result.success(read(file))
+                        "write" -> {
+                            save(file, requireNotNull(call.argument<String>("value")))
+                            result.success(null)
+                        }
+                        "delete" -> {
+                            file.delete()
+                            check(!file.baseFile.exists())
+                            result.success(null)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (_: Exception) {
+                    result.error("storage-unavailable", "Credential storage is unavailable", null)
+                }
+            }
     }
 
     private fun registerStore(
@@ -169,6 +258,9 @@ class MainActivity : FlutterActivity() {
         }.generateKey()
 
     private companion object {
+        var localRuntime: LocalRuntime? = null
+        val dshCookie = Regex("dsh-auth-[A-Za-z0-9_-]+=[A-Za-z0-9._~-]{16,256}")
+        val vaultKey = Regex("[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}")
         const val keyStoreName = "AndroidKeyStore"
         const val keyAlias = "tokenworks-desktop-session"
         const val iwanPackage = "com.panabit.client"

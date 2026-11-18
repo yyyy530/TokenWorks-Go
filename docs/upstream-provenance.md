@@ -29,9 +29,22 @@ TokenWorks-Go 复用了 [ccch1mneyyy/dsh-Go](https://github.com/ccch1mneyyy/dsh-
 | `packages/dsh_client/test/companion_signal_gate_test.dart` | import 路径改为 `fixtures/companion/` | 同上 |
 | `packages/dsh_client/test/dsh_go_heartbeat_test.dart` | Host 发送前检查 closeCode，并处理检查与写入之间的关闭竞态 | 避免 pong 在 peer 关闭后写入导致全套件偶发失败 |
 
+## 本轮新增的外部依赖
+
+| 组件 | 版本与来源 | 许可 | 用途 |
+|---|---|---|---|
+| `dartssh2` | 4.1.0，[pub.dev](https://pub.dev/packages/dartssh2) | MIT | 原创 SSH 主机表单、托管启动和本地端口转发 |
+| `url_launcher` | 6.3.3，[pub.dev](https://pub.dev/packages/url_launcher) | BSD 3-Clause | Remote 登录的系统浏览器跳转 |
+
+多主机、SSH、Remote 配对、自动化任务、插件市场和语音通话的 App 界面与状态管理为本仓库原创；协议调用复用上述 `dsh_client` 和 `dsh_remote`，没有复制上游 App 的对应页面实现。Android 系统语音识别与朗读通过本仓库 `VoiceChannel.kt` 接入，不引入额外语音库。
+
 ## 合规要点
 
 - 以上包整体按 AGPL-3.0 分发；发布 TokenWorks-Go 时须提供对应源码。
 - `packages/tokenworks_core/` 与 `app/lib/` 为原创代码，不继承上游 AGPL。
 - DSH Go 名称、标识、Deepy、鲸娘及 `site/home/` 素材均未复制，不在授权范围内。
 - 关于页与 README 需保留上游署名（见 README「与上游的关系」）。
+
+## Android 本机运行时
+
+运行时二进制使用 [dsh-Go v1.1.0 ARM64 官方 APK](https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.1.0) 中的原始 rootfs、PRoot、talloc 和 Android 共享内存库，构建前由 `tool/prepare_android_runtime.py` 核对 SHA-256。原生库与 rootfs 保留上游文件和声明。TokenWorks-Go 的宿主侧安装器、启动控制和工作区入口属于本仓库代码。对应上游构建来源见 [runtime/build-runtime.sh](https://github.com/ccch1mneyyy/dsh-Go/blob/v1.1.0/runtime/build-runtime.sh)。

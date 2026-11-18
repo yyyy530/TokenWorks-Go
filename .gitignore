@@ -16,3 +16,4 @@ coverage/
 *.p12
 key.properties
 local.properties
+app/android/runtime-bundle/

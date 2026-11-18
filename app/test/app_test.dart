@@ -8,12 +8,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tokenworks_core/tokenworks_core.dart' show WorkspaceMode;
 import 'package:tokenworks_go/main.dart';
 import 'package:tokenworks_go/src/desktop_host.dart';
+import 'package:tokenworks_go/src/host_manager.dart';
+import 'package:tokenworks_go/src/host_registry.dart';
+import 'package:tokenworks_go/src/host_vault.dart';
 
 void main() {
   testWidgets('rejects addresses that can expose credentials', (tester) async {
     final host = _Host();
     await tester.pumpWidget(
-      TokenWorksGoApp(store: _Store(), connect: host.connect),
+      TokenWorksGoApp(
+        manager: HostManager(vault: MemoryHostVault(), connect: host.connect),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -33,10 +38,12 @@ void main() {
   testWidgets(
     'desktop flow selects model, retries prompt, handles live events and disconnects',
     (tester) async {
-      final store = _Store();
+      final vault = MemoryHostVault();
       final host = _Host();
       await tester.pumpWidget(
-        TokenWorksGoApp(store: store, connect: host.connect),
+        TokenWorksGoApp(
+          manager: HostManager(vault: vault, connect: host.connect),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -48,8 +55,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(host.endpoints.single.toString(), 'https://desktop.example');
-      expect(store.saved?.cookie, same(host.cookie));
-      expect(store.saved?.encode(), isNot(contains('test-launch-token')));
+      final registry = HostRegistry.decode(vault.values[HostRegistry.registryKey]!);
+      final secretKey = HostRegistry.secretKey(registry.hosts.single.id);
+      final saved = DesktopCredentials.decode(vault.values[secretKey]!);
+      expect(saved.cookie.name, host.cookie.name);
+      expect(saved.cookie.value, host.cookie.value);
+      expect(saved.cookie.authority, host.cookie.authority);
+      expect(saved.encode(), isNot(contains('test-launch-token')));
       expect(find.text('最近会话'), findsOneWidget);
 
       await tester.tap(find.text('新建会话'));
@@ -211,33 +223,48 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
       await tester.tap(find.text('断开并清除登录'));
-      await tester.pumpAndSettle();
-      expect(store.saved, isNull);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(vault.values[secretKey], isNull);
       expect(host.closed, isTrue);
       expect(find.text('最近会话'), findsNothing);
     },
   );
 
-  testWidgets('restores a saved credential only for its saved endpoint', (
+  testWidgets('migrates and restores a saved credential only for its endpoint', (
     tester,
   ) async {
     final host = _Host();
     final endpoint = Uri.parse('https://desktop.example');
     final store = _Store()..saved = DesktopCredentials(endpoint, host.cookie);
+    final vault = MemoryHostVault();
     await tester.pumpWidget(
-      TokenWorksGoApp(store: store, connect: host.connect),
+      TokenWorksGoApp(
+        manager: HostManager(
+          vault: vault,
+          connect: host.connect,
+          legacyStore: store,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
     expect(host.endpoints, [endpoint]);
-    expect(host.restored, same(host.cookie));
+    expect(host.restored?.name, host.cookie.name);
+    expect(host.restored?.value, host.cookie.value);
+    expect(host.restored?.authority, host.cookie.authority);
+    expect(store.saved, isNull);
     expect(find.text('最近会话'), findsOneWidget);
+    final registry = HostRegistry.decode(vault.values[HostRegistry.registryKey]!);
+    expect(registry.hosts.single.endpoint, endpoint);
+    final secretKey = HostRegistry.secretKey(registry.hosts.single.id);
+    expect(vault.values[secretKey], isNotNull);
     await tester.tap(find.text('断开并清除登录'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    expect(store.saved, isNull);
+    expect(vault.values[secretKey], isNull);
     expect(host.closed, isTrue);
-    expect(find.text('连接桌面主机'), findsOneWidget);
+    expect(find.text('选择主机'), findsOneWidget);
   });
 }
 
