@@ -1,0 +1,76 @@
+name: Validate TokenWorks-Go
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.47.7'
+
+jobs:
+  campus:
+    name: Campus access service
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test services/campus/server.test.mjs
+
+  dart:
+    name: Dart / ${{ matrix.package }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [tokenworks_core, dsh_client, dsh_remote]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - if: matrix.package == 'tokenworks_core'
+        run: flutter pub get
+      - if: matrix.package != 'tokenworks_core'
+        working-directory: packages/${{ matrix.package }}
+        run: dart pub get
+      - working-directory: packages/${{ matrix.package }}
+        run: dart analyze
+      - working-directory: packages/${{ matrix.package }}
+        run: dart test
+
+  android:
+    name: Flutter and Android debug APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - working-directory: app
+        run: flutter analyze --no-pub
+      - working-directory: app
+        run: flutter test --no-pub
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - working-directory: app
+        run: flutter build apk --debug --no-pub --target-platform android-arm64,android-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TokenWorks-Go-debug
+          path: app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
