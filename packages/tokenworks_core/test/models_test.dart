@@ -119,13 +119,13 @@ void main() {
         },
       ],
       'quotas': [
-        {'id': '3h', 'remaining': 1.5, 'limit': 2.5, 'resetsAt': '2026-11-18T00:00:00Z'},
+        {'id': '3h', 'remaining': 1.5, 'limit': 3, 'resetsAt': '2026-11-18T00:00:00Z'},
       ],
       'network': 'campus',
     });
     expect(snapshot.models.single.id, 'future-model');
     expect(snapshot.models.single.reasoningLevels, ['low', 'high']);
-    expect(snapshot.quotas.single.fraction, .6);
+    expect(snapshot.quotas.single.fraction, .5);
     expect(snapshot.network, NetworkScope.campus);
   });
 }

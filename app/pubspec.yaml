@@ -14,6 +14,7 @@ dependencies:
     path: ../packages/dsh_client
   dsh_remote:
     path: ../packages/dsh_remote
+  file_picker: ^13.4.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,7 +1,7 @@
 # TokenWorks-Go 架构
 
 > 目标：词元工坊的完整手机版（TokenWorks-Go），正如 dsh-Go 是 DeepSeek Harness 的手机版。
-> 当前里程碑 M1：Android 双模式可用垂直切片，不引入酒馆/桌宠/自更新。
+> 本文描述目标架构。已接入的 Android 应用通过 DSH 的 HTTP RPC 和 WebSocket 访问单台 HTTPS 桌面主机，直接复用 `DshClient` 的会话与文件协议。学校桥接、本机引擎和其他传输路径的进度见[路线图](roadmap.md)。
 
 ## 总体架构
 
@@ -55,7 +55,7 @@ TokenWorks-Go App (Flutter + Riverpod)
 ## 桥协议策略
 
 首版继续使用 `/dsh-go/v1/*` 与 `dsh/*` 通道名，避免无收益地同时改客户端、桥和 Host 插件。
-capabilities 协商遵循 `docs/design/bridge-contract.md`：
+目标 capabilities 协商参考[上游桥协议](https://github.com/ccch1mneyyy/dsh-Go/blob/de8979d89d2205fc8872871e54904ddcda891b87/docs/design/bridge-contract.md)。
 - 按 `v` 判协议主版本，`bridge` 字段仅供诊断
 - 未知能力忽略，业务错误优先嵌套 `{error:{code,message}}`
 - 404 分类：`route-not-found` → null；其他结构化 404 → 抛原码

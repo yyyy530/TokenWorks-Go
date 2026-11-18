@@ -124,8 +124,8 @@ final class HostProfile {
     }
     final isLoopback =
         endpoint.host == '127.0.0.1' || endpoint.host == 'localhost' || endpoint.host == '::1';
-    if (endpoint.scheme != 'https' && !isLoopback) {
-      throw const FormatException('Remote hosts require HTTPS');
+    if (endpoint.scheme != 'https' && !(isLoopback && endpoint.scheme == 'http')) {
+      throw const FormatException('Host endpoints require HTTPS or loopback HTTP');
     }
     if (kind == HostKind.remote && isLoopback) {
       throw const FormatException('A remote host cannot use a phone-loopback endpoint');
@@ -207,8 +207,8 @@ final class AccountSnapshot {
           if (resetsAt == null) throw const FormatException('Invalid quota reset time');
           return QuotaWindow(
             id: quota['id'] as String,
-            remaining: quota['remaining'] as double,
-            limit: quota['limit'] as double,
+            remaining: (quota['remaining'] as num).toDouble(),
+            limit: (quota['limit'] as num).toDouble(),
             resetsAt: resetsAt,
           );
         }),
