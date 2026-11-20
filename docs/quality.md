@@ -29,6 +29,20 @@ CI 固定使用 Flutter 3.47.7。根目录的 Pub workspace 包含 `app` 与 `to
 
 Android 本机引擎、SSH 托管、DSH Remote 配对与学校账号均有独立验收要求，见[路线图](roadmap.md)。
 
+## 2026-11-20 托管 CI 验证
+
+GitHub Actions 在提交 `0b90ea3` 上全绿（run `44703180606`）：
+
+| 作业 | 结果 |
+|---|---|
+| Campus access service | 通过 |
+| Dart / tokenworks_core | 通过 |
+| Dart / dsh_client | 通过 |
+| Dart / dsh_remote | 通过 |
+| Flutter and Android debug APK | 通过，产出 `TokenWorks-Go-debug`（约 64.3 MB） |
+
+首个运行曾在安装 Android SDK 时因 `sdkmanager` 不在 PATH 失败（exit 127）；修复后该步骤正常安装 platform 36、build-tools 36.0.0 与 NDK 28.2.13676358。托管构建的 APK 同样不含 `runtime-bundle`（仓库不跟踪该目录），真机与真实主机验收仍未进行。
+
 ## 2026-11-19 本地验证
 
 本轮实际执行 `flutter analyze`、`flutter test`（App），`dart analyze`、`dart test`（三个 Dart 包），`node --test services/campus/server.test.mjs`，以及 `flutter build apk --debug --no-pub --target-platform android-arm64,android-x64`。

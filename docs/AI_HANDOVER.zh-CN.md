@@ -197,7 +197,7 @@ E:\tokenworks-tooling\twg-analyze-qoder\app\build\app\outputs\flutter-apk\app-de
 
 ## 9. 推荐后续顺序
 
-1. 查看已推送的 GitHub Actions 结果，按失败日志修复 CI；本地成功不等于托管 CI 成功。
+1. 托管 CI 已全绿（`0b90ea3`，run `44703180606`），可直接进入真机验收；后续改 CI 时留意 workflow 权限与 Android SDK 安装步骤。
 2. 在 ARM64 真机验收：多主机存储、SSH 密码/私钥与两种实例模式、Remote 登录与指纹、插件安装、自动化任务、语音权限和音频路由。
 3. 恢复可读的 `runtime-bundle`，重新构建完整内置 Linux APK，再验收本机引擎。
 4. 接 Remote 局域网 / P2P / TURN 和扫码配对；评估 SSH 压缩与上游托管状态契约。
@@ -206,4 +206,4 @@ E:\tokenworks-tooling\twg-analyze-qoder\app\build\app\outputs\flutter-apk\app-de
 
 ## 10. 给下一位 AI 的简短工作指令
 
-> 当前仓库已经有可编译、可测试的六项移动端实现，优化提交已全部推送到 GitHub，但没有真机或真实主机验收。先检查托管 CI 并做真机验收。Remote 只有 Relay，SSH 没有压缩，插件设置仍在网页版，语音使用系统服务，验证 APK 不含 Linux 运行时。不要把这些限制写成已完成。保留上游 AGPL 署名和修改记录；秘密只进 Keystore；所有危险操作需要明确用户确认；未经用户要求不提交、不推送、不改写历史。
+> 当前仓库已经有可编译、可测试的六项移动端实现，优化提交已全部推送到 GitHub，托管 CI 已全绿，但没有真机或真实主机验收。下一步做真机验收。Remote 只有 Relay，SSH 没有压缩，插件设置仍在网页版，语音使用系统服务，验证 APK 不含 Linux 运行时。不要把这些限制写成已完成。保留上游 AGPL 署名和修改记录；秘密只进 Keystore；所有危险操作需要明确用户确认；未经用户要求不提交、不推送、不改写历史。
